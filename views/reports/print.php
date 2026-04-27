@@ -19,6 +19,7 @@ $columnLabels = is_array($chartData['column_labels'] ?? null)
         return (string) ($column['label'] ?? $column);
     }, $columns);
 $columnCounts = is_array($chartData['column_counts'] ?? null) ? $chartData['column_counts'] : [];
+$completionPercentage = number_format((float) ($summary['completion_percentage'] ?? 0), 1);
 
 $sheetBars = [];
 $sheetMax = 1;
@@ -404,7 +405,8 @@ foreach ($columnLabels as $index => $label) {
         <div class="subtext" style="text-align:right;">
             Report ID: <?= e((string) ($report['id'] ?? 0)) ?><br>
             Sheets: <?= e((string) ($metrics['sheet_count'] ?? 0)) ?><br>
-            Rows: <?= e((string) ($metrics['row_count'] ?? 0)) ?>
+            Rows: <?= e((string) ($metrics['row_count'] ?? 0)) ?><br>
+            Completeness: <?= e($completionPercentage) ?>%
         </div>
     </div>
 
@@ -422,8 +424,8 @@ foreach ($columnLabels as $index => $label) {
             <div class="metric-value"><?= e(number_format((int) ($metrics['sheet_count'] ?? 0))) ?></div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Status</div>
-            <div class="metric-value"><?= e(ucfirst((string) ($report['report_status'] ?? 'generated'))) ?></div>
+            <div class="metric-label">Data completeness</div>
+            <div class="metric-value"><?= e($completionPercentage) ?>%</div>
         </div>
     </div>
 

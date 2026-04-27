@@ -50,14 +50,18 @@ final class ReportService
         $summary = $report['summary'] ?? [];
         $pagination = $this->excelDataRepository->findByUploadId($upload['id'], $page, $perPage);
         $columns = $this->resolveColumns($summary, $pagination['data']);
+        $allRows = $this->excelDataRepository->findAllByUploadId($upload['id']);
+        $visualData = build_report_visual_data($upload, $summary, $allRows, $columns);
 
         return [
             'report' => $report,
             'upload' => $upload,
-            'summary' => $summary,
+            'summary' => $visualData['summary'],
             'columns' => $columns,
             'rows' => $pagination['data'],
             'pagination' => $pagination,
+            'chart_data' => $visualData['chart_data'],
+            'insights' => $visualData['insights'],
             'metrics' => [
                 'row_count' => (int) ($upload['row_count'] ?? 0),
                 'column_count' => (int) ($upload['column_count'] ?? count($columns)),
@@ -78,13 +82,16 @@ final class ReportService
         $summary = $report['summary'] ?? [];
         $rows = $this->excelDataRepository->findAllByUploadId($upload['id']);
         $columns = $this->resolveColumns($summary, $rows);
+        $visualData = build_report_visual_data($upload, $summary, $rows, $columns);
 
         return [
             'report' => $report,
             'upload' => $upload,
-            'summary' => $summary,
+            'summary' => $visualData['summary'],
             'columns' => $columns,
             'rows' => $rows,
+            'chart_data' => $visualData['chart_data'],
+            'insights' => $visualData['insights'],
             'metrics' => [
                 'row_count' => (int) ($upload['row_count'] ?? count($rows)),
                 'column_count' => (int) ($upload['column_count'] ?? count($columns)),

@@ -19,7 +19,7 @@ $flashError = flash('error');
 </head>
 <body class="minimal-app">
     <main class="minimal-page">
-        <div class="minimal-page-inner">
+        <div class="minimal-page-inner <?= e($pageWidthClass ?? '') ?>">
             <?php if ($flashSuccess || $flashError): ?>
                 <div class="message-stack mb-4">
                     <?php if ($flashSuccess): ?>

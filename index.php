@@ -126,7 +126,6 @@ function build_import_report_data(UploadRepository $uploadRepository, ExcelDataR
 
     $rows = $excelDataRepository->findAllByUploadId($uploadId);
     $summary = is_array($upload['summary'] ?? null) ? $upload['summary'] : [];
-    $sheets = is_array($summary['sheets'] ?? null) ? $summary['sheets'] : [];
     $columnMap = is_array($summary['column_map'] ?? null) ? $summary['column_map'] : [];
 
     if ($columnMap === [] && !empty($rows[0]['column_data']) && is_array($rows[0]['column_data'])) {
@@ -135,98 +134,21 @@ function build_import_report_data(UploadRepository $uploadRepository, ExcelDataR
         }
     }
 
-    if ($sheets === []) {
-        $sheetGroups = [];
+    $columns = array_map(
+        static fn (string $label, string $key): array => ['key' => $key, 'label' => $label],
+        array_values($columnMap),
+        array_keys($columnMap)
+    );
 
-        foreach ($rows as $row) {
-            $sheetName = (string) ($row['sheet_name'] ?? 'Sheet 1');
-            $sheetGroups[$sheetName] = ($sheetGroups[$sheetName] ?? 0) + 1;
-        }
-
-        foreach ($sheetGroups as $sheetName => $rowCount) {
-            $sheets[] = [
-                'sheet_name' => $sheetName,
-                'row_count' => $rowCount,
-                'headers' => array_values($columnMap),
-            ];
-        }
-    }
-
-    $sheetLabels = [];
-    $sheetCounts = [];
-
-    foreach ($sheets as $sheet) {
-        $sheetLabels[] = (string) ($sheet['sheet_name'] ?? 'Sheet');
-        $sheetCounts[] = (int) ($sheet['row_count'] ?? 0);
-    }
-
-    $columnLabels = array_values($columnMap);
-    $columnCounts = [];
-
-    foreach (array_keys($columnMap) as $columnKey) {
-        $count = 0;
-
-        foreach ($rows as $row) {
-            $value = $row['column_data'][$columnKey] ?? null;
-
-            if ($value !== null && $value !== '') {
-                $count++;
-            }
-        }
-
-        $columnCounts[] = $count;
-    }
-
-    $sheetCount = max(1, count($sheetLabels));
-    $rowCount = count($rows);
-    $topSheetIndex = $sheetCounts === [] ? 0 : array_search(max($sheetCounts), $sheetCounts, true);
-    $topSheetName = $sheetLabels[$topSheetIndex] ?? 'Sheet';
-    $averageRows = round($rowCount / $sheetCount, 1);
-    $filledCells = 0;
-    $totalCells = max(1, $rowCount * max(1, count($columnLabels)));
-
-    foreach ($columnCounts as $count) {
-        $filledCells += $count;
-    }
+    $visualData = build_report_visual_data($upload, $summary, $rows, $columns);
 
     return [
         'upload' => $upload,
         'rows' => $rows,
-        'columns' => array_map(
-            static fn (string $label, string $key): array => ['key' => $key, 'label' => $label],
-            array_values($columnMap),
-            array_keys($columnMap)
-        ),
-        'summary' => [
-            'row_count' => $rowCount,
-            'sheet_count' => count($sheetLabels),
-            'column_count' => count($columnLabels),
-            'file_name' => $upload['original_filename'] ?? $upload['filename'] ?? 'Imported file',
-            'upload_date' => $upload['upload_date'] ?? null,
-        ],
-        'chart_data' => [
-            'sheet_labels' => $sheetLabels,
-            'sheet_counts' => $sheetCounts,
-            'column_labels' => $columnLabels,
-            'column_counts' => $columnCounts,
-        ],
-        'insights' => [
-            [
-                'title' => 'Largest sheet',
-                'value' => $topSheetName,
-                'note' => 'Largest sheet by row volume',
-            ],
-            [
-                'title' => 'Average rows per sheet',
-                'value' => (string) $averageRows,
-                'note' => 'Across all parsed sheets',
-            ],
-            [
-                'title' => 'Cell completeness',
-                'value' => round(($filledCells / $totalCells) * 100) . '%',
-                'note' => 'Filled cells across mapped columns',
-            ],
-        ],
+        'columns' => $columns,
+        'summary' => $visualData['summary'],
+        'chart_data' => $visualData['chart_data'],
+        'insights' => $visualData['insights'],
     ];
 }
 
@@ -234,6 +156,8 @@ function build_export_report_payload(array $reportData, int $uploadId, bool $aut
 {
     return [
         'reportData' => $reportData,
+        'chart_data' => $reportData['chart_data'],
+        'insights' => $reportData['insights'],
         'report' => [
             'id' => $uploadId,
             'report_title' => $reportData['summary']['file_name'] . ' Insights',
@@ -386,6 +310,7 @@ echo view('upload', [
     'pageTitle' => config('app.name'),
     'pageSubtitle' => 'Click or drag an .xlsx file to import it.',
     'currentPage' => 'upload',
+    'pageWidthClass' => 'minimal-page-inner--wide',
     'uploadMaxMb' => (int) config('app.upload_max_mb', 20),
     'reportHtml' => $initialReportHtml,
     'reportData' => $initialReportData,

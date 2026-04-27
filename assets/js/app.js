@@ -17,6 +17,12 @@
         column: null,
     };
 
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.font.family = '"Plus Jakarta Sans", system-ui, sans-serif';
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.borderColor = 'rgba(148, 163, 184, 0.14)';
+    }
+
     function escapeHtml(value) {
         return String(value)
             .replace(/&/g, '&amp;')
@@ -122,16 +128,44 @@
                         data: chartData.sheet_counts || [],
                         backgroundColor: 'rgba(37, 99, 235, 0.78)',
                         borderRadius: 10,
+                        borderSkipped: false,
                     }],
                 },
                 options: {
                     responsive: true,
+                    aspectRatio: 2.25,
+                    layout: {
+                        padding: {
+                            top: 4,
+                            right: 4,
+                            bottom: 0,
+                            left: 0,
+                        },
+                    },
                     plugins: {
                         legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            padding: 12,
+                            titleColor: '#ffffff',
+                            bodyColor: '#e2e8f0',
+                            borderColor: 'rgba(148, 163, 184, 0.2)',
+                            borderWidth: 1,
+                            displayColors: false,
+                        },
                     },
                     scales: {
-                        x: { grid: { display: false } },
-                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b' },
+                            border: { color: 'rgba(148, 163, 184, 0.16)' },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0, color: '#64748b' },
+                            grid: { color: 'rgba(148, 163, 184, 0.12)' },
+                            border: { color: 'rgba(148, 163, 184, 0.16)' },
+                        },
                     },
                 },
             });
@@ -157,9 +191,27 @@
                 },
                 options: {
                     responsive: true,
+                    aspectRatio: 1.65,
+                    cutout: '68%',
+                    layout: {
+                        padding: 12,
+                    },
                     plugins: {
                         legend: {
                             position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                padding: 14,
+                            },
+                        },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            padding: 12,
+                            titleColor: '#ffffff',
+                            bodyColor: '#e2e8f0',
+                            borderColor: 'rgba(148, 163, 184, 0.2)',
+                            borderWidth: 1,
                         },
                     },
                 },
@@ -182,6 +234,32 @@
                 reportMount.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 120);
         }
+    }
+
+    function bootstrapExistingReport() {
+        if (!reportMount || reportMount.classList.contains('d-none')) {
+            return;
+        }
+
+        const reportRoot = reportMount.querySelector('#generatedReport');
+
+        if (!reportRoot) {
+            return;
+        }
+
+        let reportData = null;
+
+        try {
+            reportData = JSON.parse(reportRoot.dataset.reportData || '{}');
+        } catch (error) {
+            reportData = null;
+        }
+
+        initializeCharts(reportData || {});
+
+        window.setTimeout(function () {
+            reportMount.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 120);
     }
 
     function isXlsxFile(file) {
@@ -236,32 +314,6 @@
             });
 
             const payload = await response.json().catch(function () {
-
-    function bootstrapExistingReport() {
-        if (!reportMount || reportMount.classList.contains('d-none')) {
-            return;
-        }
-
-        const reportRoot = reportMount.querySelector('#generatedReport');
-
-        if (!reportRoot) {
-            return;
-        }
-
-        let reportData = null;
-
-        try {
-            reportData = JSON.parse(reportRoot.dataset.reportData || '{}');
-        } catch (error) {
-            reportData = null;
-        }
-
-        initializeCharts(reportData || {});
-
-        window.setTimeout(function () {
-            reportMount.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 120);
-    }
                 return null;
             });
 
