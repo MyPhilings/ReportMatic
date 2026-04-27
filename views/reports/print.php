@@ -147,20 +147,31 @@ if ($pieSlices === [] && $sheetTotal <= 0) {
 
 $barSeries = array_slice($sortedSheetSeries, 0, 6);
 $barMax = $barSeries !== [] ? max(1, max(array_map(static fn (array $segment): int => (int) $segment['count'], $barSeries))) : 1;
-$executiveSummary = sprintf(
-    '%s contains %s rows across %s sheet%s and %s mapped column%s. %s is the largest sheet with %s rows, while %s is the best covered field at %s%% completion. Overall data completeness is %s%%.',
-    (string) ($summary['file_name'] ?? 'Imported file'),
-    number_format($rowTotal),
-    number_format((int) $sheetCount),
-    (int) $sheetCount === 1 ? '' : 's',
-    number_format((int) $columnCount),
-    (int) $columnCount === 1 ? '' : 's',
-    $largestSheetName,
-    number_format($largestSheetRows),
-    $bestFieldName,
-    $bestFieldShare,
-    $completionPercentage
-);
+// Derive summary metrics to avoid undefined variable warnings when parts of
+// the chart/summary data are missing.
+$sheetCount = (int) ($metrics['sheet_count'] ?? count($sheetLabels ?? []));
+$columnCount = (int) ($metrics['column_count'] ?? count($columnLabels ?? []));
+
+$largestSheetName = 'N/A';
+$largestSheetRows = 0;
+if ($sortedSheetSeries !== []) {
+    $largestSheetName = (string) ($sortedSheetSeries[0]['label'] ?? 'N/A');
+    $largestSheetRows = (int) ($sortedSheetSeries[0]['count'] ?? 0);
+}
+
+$bestFieldName = 'N/A';
+$bestFieldShare = 0;
+if ($columnBars !== []) {
+    $best = $columnBars[0];
+    foreach ($columnBars as $cb) {
+        if (($cb['percentage'] ?? 0) > ($best['percentage'] ?? 0)) {
+            $best = $cb;
+        }
+    }
+    $bestFieldName = (string) ($best['label'] ?? 'N/A');
+    $bestFieldShare = $best['percentage'] ?? 0;
+}
+$executiveSummary = (string) ($summary['executive_summary'] ?? $reportData['executive_summary'] ?? ($summary['note'] ?? ''));
 ?>
 <!doctype html>
 <html lang="en">
@@ -507,56 +518,27 @@ $executiveSummary = sprintf(
     </style>
 </head>
 <body>
-<div class="report-page">
+    <div class="report-page">
     <div class="report-header">
         <div>
             <div class="brand"><?= e(config('app.name')) ?></div>
             <h1><?= e($report['report_title'] ?? 'Report') ?></h1>
-            <div class="subtext">Source file: <?= e($upload['original_filename'] ?? 'unknown file') ?><br>Generated on: <?= e(format_datetime($report['created_at'] ?? null)) ?></div>
-        </div>
-        <div class="subtext" style="text-align:right;">
-            Report ID: <?= e((string) ($report['id'] ?? 0)) ?><br>
-            Sheets: <?= e((string) ($metrics['sheet_count'] ?? 0)) ?><br>
-            Rows: <?= e((string) ($metrics['row_count'] ?? 0)) ?><br>
-            Completeness: <?= e($completionPercentage) ?>%
+            <div class="subtext">Generated on: <?= e(format_datetime($report['created_at'] ?? null)) ?></div>
         </div>
     </div>
-
-    <div class="metrics">
-        <div class="metric-card">
-            <div class="metric-label">Rows</div>
-            <div class="metric-value"><?= e(number_format((int) ($metrics['row_count'] ?? 0))) ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Columns</div>
-            <div class="metric-value"><?= e(number_format((int) ($metrics['column_count'] ?? 0))) ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Sheets</div>
-            <div class="metric-value"><?= e(number_format((int) ($metrics['sheet_count'] ?? 0))) ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Data completeness</div>
-            <div class="metric-value"><?= e($completionPercentage) ?>%</div>
-        </div>
-    </div>
-
-    <?php if (!empty($summary['headers'])): ?>
-        <div class="chips">
-            <?php foreach ($summary['headers'] as $headerLabel): ?>
-                <span class="chip"><?= e($headerLabel) ?></span>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
 
     <div class="visual-section">
         <div class="section-heading">
             <div>
-                <div class="section-kicker">Visual export</div>
-                <h2>Charts and insights</h2>
+                <div class="section-kicker">Highlights</div>
+                <h2>Executive summary & charts</h2>
             </div>
-            <div class="section-note">Static, print-safe charts that mirror the on-page report without relying on browser scripts.</div>
+            <div class="section-note"><?= e($summary['subtitle'] ?? '') ?></div>
         </div>
+
+        <?php if (!empty($executiveSummary)): ?>
+            <div style="max-width:1100px;margin:8px auto 12px;color:#425a4d;font-size:13px;"><?= e($executiveSummary) ?></div>
+        <?php endif; ?>
 
         <?php if ($insights !== []): ?>
             <div class="insight-grid">
@@ -569,50 +551,49 @@ $executiveSummary = sprintf(
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
-
         <div class="chart-grid">
             <div class="chart-card">
                 <div class="chart-card-head">
                     <div>
-                        <div class="section-kicker">Sheet distribution</div>
-                        <h3>Rows by sheet</h3>
-                        <p>Relative row volume for each parsed sheet.</p>
+                        <div class="section-kicker">Distribution</div>
+                        <h3>Category share</h3>
+                        <p>Proportional distribution of top categories.</p>
                     </div>
-                    <div class="chart-note"><?= e((string) count($sheetBars)) ?> sheets</div>
+                    <div class="chart-note"></div>
                 </div>
 
-                <?php if ($sheetBars === []): ?>
-                    <div class="empty-state">No sheet distribution data is available for this export.</div>
-                <?php else: ?>
-                    <div class="bar-list">
-                        <?php foreach ($sheetBars as $bar): ?>
-                            <div class="bar-row">
-                                <div class="bar-row-head">
-                                    <span class="bar-row-label"><?= e($bar['label']) ?></span>
-                                    <span class="bar-row-meta"><?= e(number_format($bar['count'])) ?> rows</span>
+                <?php if ($pieSlices !== []): ?>
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <svg viewBox="0 0 220 220" width="220" height="220" role="img" aria-label="Category distribution">
+                            <?php foreach ($pieSlices as $slice): ?>
+                                <path d="<?= e($slice['path']) ?>" fill="<?= e($slice['color']) ?>"></path>
+                            <?php endforeach; ?>
+                        </svg>
+                        <div style="flex:1;">
+                            <?php foreach ($pieSlices as $slice): ?>
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13px;">
+                                    <div style="display:flex;gap:8px;align-items:center;"><span style="width:12px;height:12px;background:<?= e($slice['color']) ?>;display:inline-block;border-radius:2px;"></span><span><?= e($slice['label']) ?></span></div>
+                                    <div style="color:#475569"><?= e((string)$slice['share']) ?>%</div>
                                 </div>
-                                <div class="bar-track">
-                                    <div class="bar-fill" style="width: <?= e((string) $bar['width']) ?>%;"></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
+                <?php else: ?>
+                    <div class="empty-state">No chart data available</div>
                 <?php endif; ?>
             </div>
 
             <div class="chart-card">
                 <div class="chart-card-head">
                     <div>
-                        <div class="section-kicker">Field completeness</div>
-                        <h3>Column coverage</h3>
-                        <p>Filled cells shown as a percentage of total imported rows.</p>
+                        <div class="section-kicker">Trends</div>
+                        <h3>Top categories</h3>
+                        <p>Leading categories by volume or coverage.</p>
                     </div>
-                    <div class="chart-note"><?= e((string) count($columnBars)) ?> fields</div>
+                    <div class="chart-note"></div>
                 </div>
 
-                <?php if ($columnBars === []): ?>
-                    <div class="empty-state">No column coverage data is available for this export.</div>
-                <?php else: ?>
+                <?php if ($columnBars !== []): ?>
                     <div class="bar-list">
                         <?php foreach ($columnBars as $bar): ?>
                             <div class="bar-row">
@@ -623,10 +604,25 @@ $executiveSummary = sprintf(
                                 <div class="bar-track">
                                     <div class="bar-fill alt" style="width: <?= e((string) $bar['width']) ?>%;"></div>
                                 </div>
-                                <div class="bar-subtext"><?= e(number_format($bar['count'])) ?> filled cells out of <?= e(number_format($rowTotal)) ?> rows</div>
                             </div>
                         <?php endforeach; ?>
                     </div>
+                <?php elseif ($barSeries !== []): ?>
+                    <div class="bar-list">
+                        <?php foreach ($barSeries as $segment): ?>
+                            <div class="bar-row">
+                                <div class="bar-row-head">
+                                    <span class="bar-row-label"><?= e($segment['label']) ?></span>
+                                    <span class="bar-row-meta"><?= e(number_format($segment['count'])) ?></span>
+                                </div>
+                                <div class="bar-track">
+                                    <div class="bar-fill" style="width: <?= e((string) round(((int)$segment['count'] / max(1, $barMax)) * 100)) ?>%;"></div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="empty-state">No trend data available</div>
                 <?php endif; ?>
             </div>
         </div>
@@ -636,24 +632,28 @@ $executiveSummary = sprintf(
         <table>
             <thead>
             <tr>
-                <th>Source sheet</th>
-                <th>Row #</th>
-                <?php foreach ($columns as $column): ?>
-                    <th><?= e($column['label']) ?></th>
-                <?php endforeach; ?>
+                <?php if (empty($columns)): ?>
+                    <th>No data</th>
+                <?php else: ?>
+                    <?php foreach ($columns as $column): ?>
+                        <th><?= e($column['label']) ?></th>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tr>
             </thead>
             <tbody>
-            <?php foreach ($rows as $row): ?>
-                <tr>
-                    <td><?= e($row['sheet_name']) ?></td>
-                    <td><?= e((string) $row['row_index']) ?></td>
-                    <?php foreach ($columns as $column): ?>
-                        <?php $value = $row['column_data'][$column['key']] ?? ''; ?>
-                        <td><?= e(is_scalar($value) ? (string) $value : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></td>
-                    <?php endforeach; ?>
-                </tr>
-            <?php endforeach; ?>
+            <?php if (empty($rows)): ?>
+                <tr><td colspan="<?= max(1, count($columns)) ?>" style="color:#64748b;padding:12px;">No rows to display</td></tr>
+            <?php else: ?>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <?php foreach ($columns as $column): ?>
+                            <?php $value = $row['column_data'][$column['key']] ?? ''; ?>
+                            <td><?= e(is_scalar($value) ? (string) $value : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></td>
+                        <?php endforeach; ?>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
             </tbody>
         </table>
     </div>

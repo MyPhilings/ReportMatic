@@ -14,7 +14,15 @@ final class PdfService
             throw new RuntimeException('Unable to generate the PDF document.');
         }
 
-        $html = view('reports/print', array_merge($reportData, ['autoPrint' => false]), false);
+        $viewName = 'reports/print';
+
+        if (!empty($reportData['layout']) && $reportData['layout'] === 'daily') {
+            $viewName = 'reports/daily';
+        } elseif (!empty($reportData['report']['template']) && $reportData['report']['template'] === 'daily') {
+            $viewName = 'reports/daily';
+        }
+
+        $html = view($viewName, array_merge($reportData, ['autoPrint' => false]), false);
 
         $optionsClass = 'Dompdf\\Options';
         $dompdfClass = 'Dompdf\\Dompdf';
