@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'name' => env('APP_NAME', 'ReportMatix'),
+    'name' => env('APP_NAME', 'ReportMatic'),
     'url' => env('APP_URL', 'http://localhost/ReportMatic'),
     'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
     'upload_max_mb' => (int) env('UPLOAD_MAX_MB', 20),

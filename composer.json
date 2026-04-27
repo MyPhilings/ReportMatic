@@ -1,6 +1,6 @@
 {
   "name": "reportmatic/reportmatic",
-  "description": "ReportMatix - Excel to report generator for internal enterprise use",
+  "description": "ReportMatic - Excel to report generator for internal enterprise use",
   "type": "project",
   "require": {
     "php": "^8.2",
