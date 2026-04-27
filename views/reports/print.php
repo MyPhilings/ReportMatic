@@ -171,6 +171,81 @@ if ($columnBars !== []) {
     $bestFieldName = (string) ($best['label'] ?? 'N/A');
     $bestFieldShare = $best['percentage'] ?? 0;
 }
+// Prepare display-focused helpers: pick business columns, format cell values,
+// and build data for a vertical bar chart (top categories).
+$displayColumns = [];
+foreach ($columns as $col) {
+    $label = strtolower((string) ($col['label'] ?? $col));
+    $key = strtolower((string) ($col['key'] ?? ''));
+
+    // Exclude obvious technical/internal columns (sheet, row, source, index)
+    if (preg_match('/\b(sheet|row|source|index|^#)\b/', $label) || preg_match('/\b(sheet|row|source|index|_id)\b/', $key)) {
+        continue;
+    }
+
+    $displayColumns[] = $col;
+}
+
+if ($displayColumns === []) {
+    $displayColumns = $columns;
+}
+
+$displayColumns = array_slice($displayColumns, 0, 12);
+
+$format_cell = static function ($v, $label = '') {
+    if ($v === null || $v === '') {
+        return '';
+    }
+
+    if (is_array($v) || is_object($v)) {
+        return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    if (is_numeric($v)) {
+        $ll = strtolower((string) $label);
+        if (strpos($ll, 'amount') !== false || strpos($ll, 'total') !== false || strpos($ll, '₱') !== false || strpos($ll, 'balance') !== false) {
+            return '₱' . number_format((float) $v, 2);
+        }
+
+        // show integers without decimals, decimals with two places
+        if ((float) intval($v) == (float) $v) {
+            return number_format((int) $v);
+        }
+
+        return number_format((float) $v, 2);
+    }
+
+    return (string) $v;
+};
+
+// Build vertical bars source: prefer column coverage (%), fall back to sheet series counts.
+$vbars = [];
+if ($columnBars !== []) {
+    $tmp = $columnBars;
+    usort($tmp, static fn ($a, $b) => ($b['percentage'] ?? 0) <=> ($a['percentage'] ?? 0));
+    $tmp = array_slice($tmp, 0, 8);
+    foreach ($tmp as $seg) {
+        $vbars[] = [
+            'label' => (string) ($seg['label'] ?? ''),
+            'value' => (float) ($seg['percentage'] ?? 0),
+            'meta' => (int) ($seg['count'] ?? 0),
+        ];
+    }
+} elseif ($barSeries !== []) {
+    $tmp = $barSeries;
+    usort($tmp, static fn ($a, $b) => (int) $b['count'] <=> (int) $a['count']);
+    $tmp = array_slice($tmp, 0, 8);
+    foreach ($tmp as $seg) {
+        $vbars[] = [
+            'label' => (string) ($seg['label'] ?? ''),
+            'value' => (float) ($seg['count'] ?? 0),
+            'meta' => (int) ($seg['count'] ?? 0),
+        ];
+    }
+}
+
+$vMax = $vbars !== [] ? max(array_map(static fn ($s) => $s['value'], $vbars)) : 1;
+
 $executiveSummary = (string) ($summary['executive_summary'] ?? $reportData['executive_summary'] ?? ($summary['note'] ?? ''));
 ?>
 <!doctype html>
@@ -515,6 +590,21 @@ $executiveSummary = (string) ($summary['executive_summary'] ?? $reportData['exec
                 display: none !important;
             }
         }
+
+        /* Vertical bar chart styles */
+        .vbar-chart { display:flex; align-items:flex-end; gap:12px; height:160px; padding:8px; }
+        .vbar-bar { display:flex; flex-direction:column; align-items:center; width:56px; }
+        .vbar-rect { width:100%; border-radius:6px 6px 0 0; background:#2563eb; transition:height .25s ease; display:block; }
+        .vbar-value { font-size:12px; color:#0f172a; margin-top:6px; font-weight:700; }
+        .vbar-label { font-size:11px; color:#475569; margin-top:6px; text-align:center; max-width:64px; word-wrap:break-word; }
+
+        /* Table improvements */
+        .table-wrap table th { background:#f8fafc; text-align:left; font-weight:600; padding:10px; font-size:12px; }
+        .table-wrap table td { padding:10px; font-size:12px; vertical-align:top; }
+        .table-wrap .num { text-align:right; font-variant-numeric:tabular-nums; }
+        .table-wrap table tr:nth-child(even){ background:#fbfdff; }
+        .table-wrap table { border-collapse:collapse; width:100%; }
+        .table-wrap thead th { border-bottom:1px solid #e5ebf4; }
     </style>
 </head>
 <body>
@@ -583,48 +673,30 @@ $executiveSummary = (string) ($summary['executive_summary'] ?? $reportData['exec
                 <?php endif; ?>
             </div>
 
-            <div class="chart-card">
-                <div class="chart-card-head">
-                    <div>
-                        <div class="section-kicker">Trends</div>
-                        <h3>Top categories</h3>
-                        <p>Leading categories by volume or coverage.</p>
+                <div class="chart-card">
+                    <div class="chart-card-head">
+                        <div>
+                            <div class="section-kicker">Trends</div>
+                            <h3>Top categories</h3>
+                            <p>Leading categories by volume or coverage.</p>
+                        </div>
+                        <div class="chart-note"></div>
                     </div>
-                    <div class="chart-note"></div>
-                </div>
 
-                <?php if ($columnBars !== []): ?>
-                    <div class="bar-list">
-                        <?php foreach ($columnBars as $bar): ?>
-                            <div class="bar-row">
-                                <div class="bar-row-head">
-                                    <span class="bar-row-label"><?= e($bar['label']) ?></span>
-                                    <span class="bar-row-meta"><?= e((string) $bar['percentage']) ?>%</span>
+                    <?php if ($vbars !== []): ?>
+                        <div class="vbar-chart" role="img" aria-label="Top categories by value">
+                            <?php foreach ($vbars as $i => $vb): $height = $vMax > 0 ? (int) round(($vb['value'] / $vMax) * 100) : 0; $color = $piePalette[$i % count($piePalette)]; ?>
+                                <div class="vbar-bar">
+                                    <div class="vbar-rect" style="height: <?= e((string) $height) ?>%; background: <?= e($color) ?>;" title="<?= e($vb['label']) ?>: <?= e((string) $vb['value']) ?>"></div>
+                                    <div class="vbar-value"><?= e((string) $vb['meta']) ?></div>
+                                    <div class="vbar-label"><?= e($vb['label']) ?></div>
                                 </div>
-                                <div class="bar-track">
-                                    <div class="bar-fill alt" style="width: <?= e((string) $bar['width']) ?>%;"></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php elseif ($barSeries !== []): ?>
-                    <div class="bar-list">
-                        <?php foreach ($barSeries as $segment): ?>
-                            <div class="bar-row">
-                                <div class="bar-row-head">
-                                    <span class="bar-row-label"><?= e($segment['label']) ?></span>
-                                    <span class="bar-row-meta"><?= e(number_format($segment['count'])) ?></span>
-                                </div>
-                                <div class="bar-track">
-                                    <div class="bar-fill" style="width: <?= e((string) round(((int)$segment['count'] / max(1, $barMax)) * 100)) ?>%;"></div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php else: ?>
-                    <div class="empty-state">No trend data available</div>
-                <?php endif; ?>
-            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">No trend data available</div>
+                    <?php endif; ?>
+                </div>
         </div>
     </div>
 
