@@ -49,6 +49,118 @@ foreach ($columnLabels as $index => $label) {
         'width' => (int) round(($count / $rowTotal) * 100),
     ];
 }
+
+$sheetSeries = [];
+
+foreach ($sheetLabels as $index => $label) {
+    $count = (int) ($sheetCounts[$index] ?? 0);
+
+    $sheetSeries[] = [
+        'label' => (string) $label,
+        'count' => $count,
+        'share' => $rowTotal > 0 ? round(($count / $rowTotal) * 100, 1) : 0.0,
+    ];
+}
+
+$sortedSheetSeries = $sheetSeries;
+usort($sortedSheetSeries, static fn (array $left, array $right): int => $right['count'] <=> $left['count']);
+
+$sheetTotal = array_sum(array_map(static fn (array $segment): int => (int) $segment['count'], $sortedSheetSeries));
+$pieSource = $sortedSheetSeries;
+
+if (count($pieSource) > 5) {
+    $otherCount = 0;
+
+    foreach (array_slice($pieSource, 5) as $segment) {
+        $otherCount += (int) ($segment['count'] ?? 0);
+    }
+
+    $pieSource = array_slice($pieSource, 0, 5);
+
+    if ($otherCount > 0) {
+        $pieSource[] = [
+            'label' => 'Other',
+            'count' => $otherCount,
+            'share' => $rowTotal > 0 ? round(($otherCount / $rowTotal) * 100, 1) : 0.0,
+        ];
+    }
+}
+
+$buildPiePath = static function (float $centerX, float $centerY, float $radius, float $startAngle, float $endAngle): string {
+    $startRadians = deg2rad($startAngle);
+    $endRadians = deg2rad($endAngle);
+
+    $startX = $centerX + ($radius * cos($startRadians));
+    $startY = $centerY + ($radius * sin($startRadians));
+    $endX = $centerX + ($radius * cos($endRadians));
+    $endY = $centerY + ($radius * sin($endRadians));
+    $largeArcFlag = ($endAngle - $startAngle) > 180 ? 1 : 0;
+
+    return sprintf(
+        'M %.4f %.4f L %.4f %.4f A %.4f %.4f 0 %d 1 %.4f %.4f Z',
+        $centerX,
+        $centerY,
+        $startX,
+        $startY,
+        $radius,
+        $radius,
+        $largeArcFlag,
+        $endX,
+        $endY
+    );
+};
+
+$piePalette = ['#0f766e', '#2563eb', '#7c3aed', '#f59e0b', '#14b8a6', '#64748b'];
+$pieSlices = [];
+$runningAngle = -90.0;
+
+foreach ($pieSource as $index => $segment) {
+    $count = (int) ($segment['count'] ?? 0);
+
+    if ($sheetTotal <= 0 || $count <= 0) {
+        continue;
+    }
+
+    $share = $count / $sheetTotal;
+    $endAngle = $runningAngle + (360.0 * $share);
+
+    $pieSlices[] = [
+        'label' => (string) ($segment['label'] ?? 'Sheet'),
+        'count' => $count,
+        'share' => round($share * 100, 1),
+        'color' => $piePalette[$index % count($piePalette)],
+        'path' => $buildPiePath(110.0, 110.0, 84.0, $runningAngle, $endAngle),
+    ];
+
+    $runningAngle = $endAngle;
+}
+
+if ($pieSlices === [] && $sheetTotal <= 0) {
+    $pieSlices[] = [
+        'label' => 'No data',
+        'count' => 0,
+        'share' => 0.0,
+        'color' => '#dbe3f0',
+        'path' => 'M 110 110 L 194 110 A 84 84 0 1 1 194 109.9 Z',
+    ];
+}
+
+$barSeries = array_slice($sortedSheetSeries, 0, 6);
+$barMax = $barSeries !== [] ? max(1, max(array_map(static fn (array $segment): int => (int) $segment['count'], $barSeries))) : 1;
+$executiveSummary = sprintf(
+    '%s contains %s rows across %s sheet%s and %s mapped column%s. %s is the largest sheet with %s rows, while %s is the best covered field at %s%% completion. Overall data completeness is %s%%.',
+    (string) ($summary['file_name'] ?? 'Imported file'),
+    number_format($rowTotal),
+    number_format((int) $sheetCount),
+    (int) $sheetCount === 1 ? '' : 's',
+    number_format((int) $columnCount),
+    (int) $columnCount === 1 ? '' : 's',
+    $largestSheetName,
+    number_format($largestSheetRows),
+    $bestFieldName,
+    $bestFieldShare,
+    $completionPercentage
+);
 ?>
 <!doctype html>
 <html lang="en">
