@@ -116,7 +116,12 @@ function build_upload_path(string $originalFilename): array
     ];
 }
 
-function build_import_report_data(UploadRepository $uploadRepository, ExcelDataRepository $excelDataRepository, int $uploadId): array
+function build_import_report_data(
+    UploadRepository $uploadRepository,
+    ExcelDataRepository $excelDataRepository,
+    int $uploadId,
+    bool $usePreviewRows = false
+): array
 {
     $upload = $uploadRepository->findById($uploadId);
 
@@ -124,8 +129,14 @@ function build_import_report_data(UploadRepository $uploadRepository, ExcelDataR
         throw new RuntimeException('The imported file could not be found.');
     }
 
-    $rows = $excelDataRepository->findAllByUploadId($uploadId);
     $summary = is_array($upload['summary'] ?? null) ? $upload['summary'] : [];
+    $rows = [];
+
+    if ($usePreviewRows && !empty($summary['preview_rows']) && is_array($summary['preview_rows'])) {
+        $rows = $summary['preview_rows'];
+    } else {
+        $rows = $excelDataRepository->findAllByUploadId($uploadId);
+    }
     $columnMap = is_array($summary['column_map'] ?? null) ? $summary['column_map'] : [];
 
     if ($columnMap === [] && !empty($rows[0]['column_data']) && is_array($rows[0]['column_data'])) {
@@ -191,7 +202,7 @@ $requestedUploadId = (int) request_input('upload_id', 0);
 
 if ($requestedUploadId > 0 && request_method() === 'GET' && ($action = strtolower((string) request_input('action', ''))) === 'print-report') {
     try {
-        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId);
+        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId, false);
         $exportData = build_export_report_payload($reportData, $requestedUploadId, true);
 
         echo view('reports/print', $exportData, false);
@@ -203,7 +214,7 @@ if ($requestedUploadId > 0 && request_method() === 'GET' && ($action = strtolowe
 
 if ($requestedUploadId > 0 && request_method() === 'GET' && (strtolower((string) request_input('action', ''))) === 'download-pdf') {
     try {
-        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId);
+        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId, false);
         $exportData = build_export_report_payload($reportData, $requestedUploadId, false);
 
         $pdfService->downloadReport($exportData);
@@ -255,7 +266,7 @@ if (request_method() === 'POST') {
 
         $summary = $importService->import($uploadId, $uploadPath['absolute_path']);
         $message = sprintf('Imported %d rows from %s.', (int) ($summary['row_count'] ?? 0), $originalFilename);
-        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $uploadId);
+        $reportData = build_import_report_data($uploadRepository, $excelDataRepository, $uploadId, true);
         $reportHtml = view('partials/report-section', ['reportData' => $reportData], false);
 
         if (is_ajax_request()) {
@@ -298,7 +309,7 @@ $initialReportData = null;
 
 if ($requestedUploadId > 0 && request_method() === 'GET') {
     try {
-        $initialReportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId);
+        $initialReportData = build_import_report_data($uploadRepository, $excelDataRepository, $requestedUploadId, true);
         $initialReportHtml = view('partials/report-section', ['reportData' => $initialReportData], false);
     } catch (Throwable) {
         $initialReportHtml = '';

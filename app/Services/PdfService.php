@@ -22,6 +22,9 @@ final class PdfService
             $viewName = 'reports/daily';
         }
 
+        $columns = $reportData['columns'] ?? [];
+        $orientation = count($columns) > 8 ? 'landscape' : 'portrait';
+
         $html = view($viewName, array_merge($reportData, ['autoPrint' => false]), false);
 
         $optionsClass = 'Dompdf\\Options';
@@ -33,7 +36,7 @@ final class PdfService
         $options->set('isHtml5ParserEnabled', true);
 
         $dompdf = new $dompdfClass($options);
-        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->setPaper('A4', $orientation);
         $dompdf->loadHtml($html, 'UTF-8');
         $dompdf->render();
 

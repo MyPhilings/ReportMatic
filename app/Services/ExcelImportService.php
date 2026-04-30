@@ -43,9 +43,11 @@ final class ExcelImportService
             'headers' => [],
             'column_map' => [],
             'sheets' => [],
+            'intro_lines' => [],
         ];
 
         $columnMap = [];
+        $columnTotals = [];
         $previewRows = [];
         $totalRows = 0;
 
@@ -57,6 +59,7 @@ final class ExcelImportService
                     $uploadId,
                     $worksheet,
                     $columnMap,
+                    $columnTotals,
                     $previewRows,
                     $previewLimit,
                     $totalRows
@@ -67,6 +70,10 @@ final class ExcelImportService
                 }
 
                 $summary['sheets'][] = $sheetSummary;
+
+                if ($summary['intro_lines'] === [] && !empty($sheetSummary['intro_lines'])) {
+                    $summary['intro_lines'] = $sheetSummary['intro_lines'];
+                }
             }
 
             $summary['row_count'] = $totalRows;
@@ -75,10 +82,17 @@ final class ExcelImportService
                 throw new RuntimeException('The workbook does not contain any importable rows.');
             }
 
+            foreach ($columnMap as $key => $label) {
+                if (!array_key_exists($key, $columnTotals)) {
+                    $columnTotals[$key] = 0;
+                }
+            }
+
             $summary['column_map'] = $columnMap;
             $summary['headers'] = array_values($columnMap);
             $summary['column_count'] = count($columnMap);
             $summary['preview_rows'] = $previewRows;
+            $summary['column_counts_map'] = $columnTotals;
 
             $this->uploadRepository->markProcessed(
                 $uploadId,
@@ -106,19 +120,41 @@ final class ExcelImportService
         int $uploadId,
         $worksheet,
         array &$columnMap,
+        array &$columnTotals,
         array &$previewRows,
         int $previewLimit,
         int &$globalRowCount
     ): array {
         $sheetName = $worksheet->getTitle();
         $headerRow = $this->detectHeaderRow($worksheet);
+        $introLines = [];
 
         if ($headerRow === null) {
             return [
                 'sheet_name' => $sheetName,
                 'row_count' => 0,
                 'headers' => [],
+                'intro_lines' => $introLines,
             ];
+        }
+
+        if ($headerRow > 1) {
+            for ($rowIndex = 1; $rowIndex < $headerRow; $rowIndex++) {
+                $values = $this->extractRowValues($worksheet, $rowIndex);
+                $parts = [];
+
+                foreach ($values as $value) {
+                    $text = trim((string) $value);
+
+                    if ($text !== '') {
+                        $parts[] = $text;
+                    }
+                }
+
+                if ($parts !== []) {
+                    $introLines[] = implode(' ', $parts);
+                }
+            }
         }
 
         $rawHeaders = $this->extractRowValues($worksheet, $headerRow);
@@ -137,7 +173,12 @@ final class ExcelImportService
             $rowData = [];
 
             foreach ($headers as $index => $header) {
-                $rowData[$header['key']] = $this->normalizeCellValue($rowValues[$index] ?? null);
+                $normalizedValue = $this->normalizeCellValue($rowValues[$index] ?? null);
+                $rowData[$header['key']] = $normalizedValue;
+
+                if ($normalizedValue !== null && $normalizedValue !== '') {
+                    $columnTotals[$header['key']] = ($columnTotals[$header['key']] ?? 0) + 1;
+                }
             }
 
             $batch[] = [
@@ -171,6 +212,7 @@ final class ExcelImportService
             'sheet_name' => $sheetName,
             'row_count' => $sheetRowCount,
             'headers' => array_values(array_map(static fn (array $header): string => $header['label'], $headers)),
+            'intro_lines' => $introLines,
         ];
     }
 

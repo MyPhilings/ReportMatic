@@ -3,6 +3,292 @@
 $report = $report ?? [];
 $reportData = is_array($reportData ?? null) ? $reportData : [];
 $upload = $upload ?? [];
+$summary = is_array($summary ?? null) ? $summary : [];
+if ($summary === [] && is_array($reportData['summary'] ?? null)) {
+    $summary = $reportData['summary'];
+}
+
+$columns = is_array($columns ?? null) ? $columns : [];
+if ($columns === [] && is_array($reportData['columns'] ?? null)) {
+    $columns = $reportData['columns'];
+}
+
+$rows = is_array($rows ?? null) ? $rows : [];
+if ($rows === [] && is_array($reportData['rows'] ?? null)) {
+    $rows = $reportData['rows'];
+}
+$autoPrint = $autoPrint ?? true;
+
+$introLines = [];
+if (is_array($summary['intro_lines'] ?? null)) {
+    $introLines = $summary['intro_lines'];
+}
+
+$introLines = array_values(array_filter(array_map('trim', $introLines), static fn (string $line): bool => $line !== ''));
+
+if ($introLines === []) {
+    $introLines = [(string) ($report['report_title'] ?? 'Report')];
+}
+
+$isLandscape = count($columns) > 8;
+
+$moneyKeywords = [
+    'amount',
+    'total',
+    'premium',
+    'stamps',
+    'evat',
+    'lgt',
+    'acknow',
+    'notarial',
+    'due',
+    'fee',
+    'charge',
+    'tax',
+    'balance',
+    'ins',
+];
+
+$clean_numeric = static function (mixed $value): ?float {
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    if (is_int($value) || is_float($value)) {
+        return (float) $value;
+    }
+
+    if (is_string($value)) {
+        $candidate = str_replace([',', ' '], '', trim($value));
+
+        if ($candidate === '') {
+            return null;
+        }
+
+        if (is_numeric($candidate)) {
+            return (float) $candidate;
+        }
+    }
+
+    return null;
+};
+
+$analyze_column = static function (string $key, string $label) use ($rows, $moneyKeywords, $clean_numeric): array {
+    $labelLower = strtolower($label);
+    $isMoneyLabel = false;
+
+    foreach ($moneyKeywords as $keyword) {
+        if (strpos($labelLower, $keyword) !== false) {
+            $isMoneyLabel = true;
+            break;
+        }
+    }
+
+    $checked = 0;
+    $numeric = 0;
+
+    foreach ($rows as $row) {
+        if ($checked >= 25) {
+            break;
+        }
+
+        $value = $row['column_data'][$key] ?? null;
+
+        if ($value === null || $value === '') {
+            continue;
+        }
+
+        $checked++;
+
+        if ($clean_numeric($value) !== null) {
+            $numeric++;
+        }
+    }
+
+    $isNumeric = $checked > 0 ? ($numeric / $checked) >= 0.8 : $isMoneyLabel;
+
+    return [
+        'numeric' => $isNumeric,
+        'money' => $isMoneyLabel,
+    ];
+};
+
+$columnMeta = [];
+foreach ($columns as $column) {
+    $key = (string) ($column['key'] ?? '');
+    $label = (string) ($column['label'] ?? $key);
+    $columnMeta[$key] = $analyze_column($key, $label);
+}
+
+$format_cell = static function (mixed $value, array $meta) use ($clean_numeric): string {
+    if ($value === null || $value === '') {
+        return '';
+    }
+
+    if (is_array($value) || is_object($value)) {
+        return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    if (!empty($meta['numeric'])) {
+        $number = $clean_numeric($value);
+
+        if ($number === null) {
+            return (string) $value;
+        }
+
+        if (!empty($meta['money'])) {
+            return number_format($number, 2);
+        }
+
+        if ((float) (int) $number === $number) {
+            return number_format((int) $number);
+        }
+
+        return number_format($number, 2);
+    }
+
+    return (string) $value;
+};
+?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?= e($report['report_title'] ?? 'Report') ?></title>
+    <style>
+        :root { color-scheme: light; }
+        @page { size: A4 <?= $isLandscape ? 'landscape' : 'portrait' ?>; margin: 12mm; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111827;
+            background: #ffffff;
+        }
+        .report-page { width: 100%; }
+        .report-header {
+            text-align: center;
+            margin-bottom: 14px;
+        }
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+        .header-sub {
+            font-size: 12px;
+            margin-top: 4px;
+            color: #374151;
+        }
+        .header-note {
+            font-size: 11px;
+            margin-top: 2px;
+            color: #6b7280;
+        }
+        .table-wrap {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        thead { background: #f8fafc; }
+        th, td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 10px;
+            text-align: left;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        th {
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 700;
+            font-size: 9px;
+            color: #374151;
+        }
+        td { white-space: pre-wrap; }
+        td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        tbody tr:nth-child(even) { background: #fbfdff; }
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="report-page">
+        <div class="report-header">
+            <?php foreach ($introLines as $index => $line): ?>
+                <?php if ($index === 0): ?>
+                    <div class="header-title"><?= e($line) ?></div>
+                <?php elseif ($index === 1): ?>
+                    <div class="header-sub"><?= e($line) ?></div>
+                <?php else: ?>
+                    <div class="header-note"><?= e($line) ?></div>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <?php if ($columns === []): ?>
+                            <th>No data</th>
+                        <?php else: ?>
+                            <?php foreach ($columns as $column): ?>
+                                <th><?= e((string) $column['label']) ?></th>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($rows === []): ?>
+                        <tr>
+                            <td colspan="<?= e((string) max(1, count($columns))) ?>" style="color:#6b7280;">No rows to display</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($rows as $row): ?>
+                            <tr>
+                                <?php foreach ($columns as $column): ?>
+                                    <?php
+                                    $key = (string) ($column['key'] ?? '');
+                                    $meta = $columnMeta[$key] ?? ['numeric' => false, 'money' => false];
+                                    $value = $row['column_data'][$key] ?? '';
+                                    $formatted = $format_cell($value, $meta);
+                                    $cellClass = !empty($meta['numeric']) ? 'num' : '';
+                                    ?>
+                                    <td class="<?= e($cellClass) ?>"><?= e($formatted) ?></td>
+                                <?php endforeach; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+<?php if ($autoPrint): ?>
+    <script>
+        window.addEventListener('load', function () {
+            window.print();
+        });
+    </script>
+<?php endif; ?>
+</body>
+</html><?php
+
+$report = $report ?? [];
+$reportData = is_array($reportData ?? null) ? $reportData : [];
+$upload = $upload ?? [];
 $summary = is_array($summary ?? null) ? $summary : ($reportData['summary'] ?? []);
 $columns = is_array($columns ?? null) ? $columns : ($reportData['columns'] ?? []);
 $rows = is_array($rows ?? null) ? $rows : ($reportData['rows'] ?? []);

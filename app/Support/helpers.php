@@ -248,6 +248,20 @@ if (!function_exists('build_report_visual_data')) {
     function build_report_visual_data(array $upload, array $summary, array $rows, array $columns = []): array
     {
         $columnMap = [];
+        $introLines = [];
+
+        if (is_array($summary['intro_lines'] ?? null)) {
+            $introLines = array_values(array_filter(array_map('trim', $summary['intro_lines']), static fn (string $line): bool => $line !== ''));
+        }
+
+        if ($introLines === [] && is_array($summary['sheets'] ?? null)) {
+            foreach ($summary['sheets'] as $sheet) {
+                if (!empty($sheet['intro_lines']) && is_array($sheet['intro_lines'])) {
+                    $introLines = array_values(array_filter(array_map('trim', $sheet['intro_lines']), static fn (string $line): bool => $line !== ''));
+                    break;
+                }
+            }
+        }
 
         if (is_array($summary['column_map'] ?? null)) {
             foreach ($summary['column_map'] as $key => $label) {
@@ -283,6 +297,9 @@ if (!function_exists('build_report_visual_data')) {
         }
 
         $rowCount = count($rows);
+        if ($rowCount === 0 && isset($summary['row_count'])) {
+            $rowCount = (int) $summary['row_count'];
+        }
         $sheetGroups = [];
 
         if (is_array($summary['sheets'] ?? null) && ($summary['sheets'] ?? []) !== []) {
@@ -318,15 +335,20 @@ if (!function_exists('build_report_visual_data')) {
         $columnLabels = array_values($columnMap);
         $columnCounts = [];
         $columnPercentages = [];
+        $columnCountsMap = is_array($summary['column_counts_map'] ?? null) ? $summary['column_counts_map'] : [];
 
         foreach (array_keys($columnMap) as $columnKey) {
-            $count = 0;
+            if ($columnCountsMap !== []) {
+                $count = (int) ($columnCountsMap[$columnKey] ?? 0);
+            } else {
+                $count = 0;
 
-            foreach ($rows as $row) {
-                $value = $row['column_data'][$columnKey] ?? null;
+                foreach ($rows as $row) {
+                    $value = $row['column_data'][$columnKey] ?? null;
 
-                if ($value !== null && $value !== '') {
-                    $count++;
+                    if ($value !== null && $value !== '') {
+                        $count++;
+                    }
                 }
             }
 
@@ -368,6 +390,7 @@ if (!function_exists('build_report_visual_data')) {
                 'column_count' => count($columnLabels),
                 'headers' => array_values($columnMap),
                 'column_map' => $columnMap,
+                'intro_lines' => $introLines,
                 'filled_cells' => $filledCells,
                 'total_cells' => $totalCells,
                 'completion_percentage' => $completionPercentage,
