@@ -673,30 +673,48 @@ $executiveSummary = (string) ($summary['executive_summary'] ?? $reportData['exec
                 <?php endif; ?>
             </div>
 
-                <div class="chart-card">
-                    <div class="chart-card-head">
-                        <div>
-                            <div class="section-kicker">Trends</div>
-                            <h3>Top categories</h3>
-                            <p>Leading categories by volume or coverage.</p>
-                        </div>
-                        <div class="chart-note"></div>
+            <div class="chart-card">
+                <div class="chart-card-head">
+                    <div>
+                        <div class="section-kicker">Trends</div>
+                        <h3>Top categories</h3>
+                        <p>Leading categories by volume or coverage.</p>
                     </div>
-
-                    <?php if ($vbars !== []): ?>
-                        <div class="vbar-chart" role="img" aria-label="Top categories by value">
-                            <?php foreach ($vbars as $i => $vb): $height = $vMax > 0 ? (int) round(($vb['value'] / $vMax) * 100) : 0; $color = $piePalette[$i % count($piePalette)]; ?>
-                                <div class="vbar-bar">
-                                    <div class="vbar-rect" style="height: <?= e((string) $height) ?>%; background: <?= e($color) ?>;" title="<?= e($vb['label']) ?>: <?= e((string) $vb['value']) ?>"></div>
-                                    <div class="vbar-value"><?= e((string) $vb['meta']) ?></div>
-                                    <div class="vbar-label"><?= e($vb['label']) ?></div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php else: ?>
-                        <div class="empty-state">No trend data available</div>
-                    <?php endif; ?>
+                    <div class="chart-note"></div>
                 </div>
+
+                <?php if ($columnBars !== []): ?>
+                    <div class="bar-list">
+                        <?php foreach ($columnBars as $bar): ?>
+                            <div class="bar-row">
+                                <div class="bar-row-head">
+                                    <span class="bar-row-label"><?= e($bar['label']) ?></span>
+                                    <span class="bar-row-meta"><?= e((string) $bar['percentage']) ?>%</span>
+                                </div>
+                                <div class="bar-track">
+                                    <div class="bar-fill alt" style="width: <?= e((string) $bar['width']) ?>%;"></div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php elseif ($barSeries !== []): ?>
+                    <div class="bar-list">
+                        <?php foreach ($barSeries as $segment): ?>
+                            <div class="bar-row">
+                                <div class="bar-row-head">
+                                    <span class="bar-row-label"><?= e($segment['label']) ?></span>
+                                    <span class="bar-row-meta"><?= e(number_format($segment['count'])) ?></span>
+                                </div>
+                                <div class="bar-track">
+                                    <div class="bar-fill" style="width: <?= e((string) round(((int)$segment['count'] / max(1, $barMax)) * 100)) ?>%;"></div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="empty-state">No trend data available</div>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
